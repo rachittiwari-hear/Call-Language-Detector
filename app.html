@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Language Detector</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F7F6F3;
+    --surface: #FFFFFF;
+    --surface2: #F0EEE9;
+    --border: #E2DFD8;
+    --border2: #CCC9C0;
+    --text: #1A1917;
+    --text2: #6B6860;
+    --text3: #9C9A93;
+    --accent: #2563EB;
+    --accent-bg: #EFF6FF;
+    --accent-border: #BFDBFE;
+    --green: #16A34A;
+    --green-bg: #F0FDF4;
+    --green-border: #BBF7D0;
+    --red: #DC2626;
+    --red-bg: #FEF2F2;
+    --amber: #D97706;
+    --amber-bg: #FFFBEB;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── layout ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-icon { font-size: 22px; }
+  .topbar-title { font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+  .topbar-sub { font-size: 12px; color: var(--text3); margin-left: 4px; }
+  .topbar-status { margin-left: auto; }
+
+  .main { max-width: 900px; margin: 0 auto; padding: 32px 20px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── upload zone ── */
+  .upload-zone {
+    border: 2px dashed var(--border2);
+    border-radius: var(--radius);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--surface2);
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-bg); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  .upload-icon { font-size: 36px; margin-bottom: 10px; }
+  .upload-label { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+  .upload-sub { font-size: 12px; color: var(--text3); }
+
+  .file-chosen {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    border-radius: var(--radius-sm);
+    margin-top: 12px;
+  }
+  .file-chosen.show { display: flex; }
+  .file-chosen-name { font-weight: 500; font-size: 13px; flex: 1; }
+  .file-chosen-path { font-size: 11px; color: var(--text3); word-break: break-all; }
+
+  /* ── settings ── */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field label { font-size: 12px; font-weight: 500; color: var(--text2); display: block; margin-bottom: 6px; }
+  select, input[type=text] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text);
+    appearance: none;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  select:focus, input[type=text]:focus { border-color: var(--accent); }
+  .select-wrap { position: relative; }
+  .select-wrap::after { content: "▾"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--text3); font-size: 11px; }
+
+  .model-help { font-size: 11px; color: var(--text3); margin-top: 5px; }
+
+  /* ── toggle ── */
+  .toggle-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--border2); border-radius: 20px; cursor: pointer; transition: 0.2s;
+  }
+  .toggle-slider::after {
+    content: ""; position: absolute; left: 3px; top: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: white; transition: 0.2s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--green); }
+  .toggle input:checked + .toggle-slider::after { transform: translateX(16px); }
+  .toggle-label { font-size: 13px; }
+
+  /* ── buttons ── */
+  .btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-primary:disabled { background: var(--border2); border-color: var(--border2); cursor: not-allowed; }
+  .btn-danger { background: var(--red-bg); color: var(--red); border-color: #FCA5A5; }
+  .btn-danger:hover { background: #FEE2E2; }
+  .btn-outline { background: var(--surface); color: var(--text); border-color: var(--border2); }
+  .btn-outline:hover { background: var(--surface2); }
+  .btn-green { background: var(--green-bg); color: var(--green); border-color: var(--green-border); }
+  .btn-green:hover { background: #DCFCE7; }
+
+  /* ── progress ── */
+  #progress-section { display: none; }
+  #progress-section.show { display: block; }
+
+  .progress-bar-wrap {
+    background: var(--surface2);
+    border-radius: 99px;
+    height: 10px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+  .progress-bar.done { background: var(--green); }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .stat { background: var(--surface2); border-radius: var(--radius-sm); padding: 12px 14px; }
+  .stat-val { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .stat-lbl { font-size: 11px; color: var(--text3); margin-top: 1px; }
+
+  .current-row {
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text2);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .current-lang { font-weight: 600; color: var(--accent); font-size: 14px; }
+
+  /* ── log ── */
+  .log-box {
+    background: #111;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: #aaa;
+  }
+  .log-box .ok { color: #4ade80; }
+  .log-box .err { color: #f87171; }
+  .log-box .info { color: #60a5fa; }
+  .log-box .save { color: #fbbf24; }
+
+  /* ── lang chart ── */
+  .lang-list { display: flex; flex-direction: column; gap: 8px; }
+  .lang-row { display: flex; align-items: center; gap: 10px; }
+  .lang-name-col { width: 100px; font-size: 13px; font-weight: 500; flex-shrink: 0; }
+  .lang-bar-bg { flex: 1; background: var(--surface2); border-radius: 99px; height: 8px; overflow: hidden; }
+  .lang-bar-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.4s; }
+  .lang-count { width: 60px; text-align: right; font-size: 12px; color: var(--text3); flex-shrink: 0; }
+
+  /* ── status pill ── */
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 500;
+  }
+  .pill-idle { background: var(--surface2); color: var(--text2); }
+  .pill-running { background: var(--accent-bg); color: var(--accent); }
+  .pill-done { background: var(--green-bg); color: var(--green); }
+  .pill-error { background: var(--red-bg); color: var(--red); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .dot.pulse { animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── server check ── */
+  #server-warning {
+    background: var(--amber-bg);
+    border: 1px solid #FDE68A;
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    display: none;
+  }
+  #server-warning.show { display: block; }
+  .warn-title { font-weight: 600; color: var(--amber); margin-bottom: 6px; }
+  .warn-body { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .warn-body code { background: #FEF3C7; padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+
+  .done-banner {
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    display: none;
+    align-items: center;
+    gap: 16px;
+  }
+  .done-banner.show { display: flex; }
+  .done-banner-icon { font-size: 32px; }
+  .done-banner-text h3 { font-size: 15px; font-weight: 600; color: var(--green); margin-bottom: 3px; }
+  .done-banner-text p { font-size: 13px; color: var(--text2); }
+
+  @media (max-width: 600px) {
+    .settings-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-icon">🎙️</span>
+  <span class="topbar-title">Call Language Detector</span>
+  <span class="topbar-sub">— powered by OpenAI Whisper</span>
+  <div class="topbar-status">
+    <span class="pill pill-idle" id="status-pill">
+      <span class="dot"></span> Idle
+    </span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Server Warning -->
+  <div id="server-warning">
+    <div class="warn-title">⚠️ Backend server not running</div>
+    <div class="warn-body">
+      This app needs a small Python server running in the background.<br>
+      Open <strong>Terminal / Command Prompt</strong> in the app folder and run:<br><br>
+      <code>python server.py</code><br><br>
+      Then refresh this page. The server will stay running while you use the app.
+    </div>
+  </div>
+
+  <!-- Step 1: Upload -->
+  <div class="card">
+    <div class="card-title">📁 Step 1 — Upload your file</div>
+
+    <div class="upload-zone" id="dropzone">
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls">
+      <div class="upload-icon">📊</div>
+      <div class="upload-label">Click to upload or drag & drop</div>
+      <div class="upload-sub">Supports .csv and .xlsx · Column A = recording URLs · Column B = will get language</div>
+    </div>
+
+    <div class="file-chosen" id="file-chosen">
+      <span style="font-size:20px">✅</span>
+      <div>
+        <div class="file-chosen-name" id="file-name"></div>
+        <div class="file-chosen-path" id="file-path"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Settings -->
+  <div class="card">
+    <div class="card-title">⚙️ Step 2 — Settings</div>
+    <div class="settings-grid">
+      <div class="field">
+        <label>Whisper Model</label>
+        <div class="select-wrap">
+          <select id="model-select">
+            <option value="tiny">tiny — Fastest, basic accuracy (test runs)</option>
+            <option value="base" selected>base — Balanced ✅ Recommended</option>
+            <option value="small">small — Better accuracy, slower</option>
+            <option value="medium">medium — High accuracy, much slower</option>
+          </select>
+        </div>
+        <div class="model-help" id="model-help">~74 MB download · good for Hindi &amp; English</div>
+      </div>
+      <div class="field">
+        <label>Resume mode</label>
+        <div class="toggle-row" style="margin-top:8px">
+          <label class="toggle">
+            <input type="checkbox" id="resume-toggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">Skip already-processed rows</span>
+        </div>
+        <div class="model-help">Safe to stop and continue later</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Run -->
+  <div class="card">
+    <div class="card-title">▶️ Step 3 — Run detection</div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="start-btn" disabled onclick="startProcessing()">
+        ▶ Start Detection
+      </button>
+      <button class="btn btn-danger" id="stop-btn" style="display:none" onclick="stopProcessing()">
+        ⏹ Stop
+      </button>
+      <button class="btn btn-green" id="download-btn" style="display:none" onclick="downloadFile()">
+        ⬇ Download Result File
+      </button>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="card" id="progress-section">
+    <div class="card-title">📊 Progress</div>
+
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="stat-val" id="stat-done">0</div>
+        <div class="stat-lbl">Processed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-total">—</div>
+        <div class="stat-lbl">Total rows</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-errors">0</div>
+        <div class="stat-lbl">Errors</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-eta">—</div>
+        <div class="stat-lbl">Est. time left</div>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="prog-bar"></div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text3); margin-bottom:14px;">
+      <span id="pct-text">0%</span>
+      <span id="rate-text"></span>
+    </div>
+
+    <div class="current-row" id="current-row" style="display:none">
+      <span>Now: <span class="current-lang" id="current-lang">—</span></span>
+      <span style="color:var(--text3); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" id="current-url"></span>
+      <span id="elapsed-text" style="color:var(--text3); flex-shrink:0"></span>
+    </div>
+
+    <!-- Language chart -->
+    <div style="margin-top:20px">
+      <div style="font-size:12px; font-weight:600; color:var(--text2); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.06em;">Language breakdown</div>
+      <div class="lang-list" id="lang-list">
+        <div style="color:var(--text3); font-size:13px;">No data yet...</div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div style="margin-top:20px">
+      <div style="font-size:12px; font-weight:600; color:var(--text2); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.06em;">Live log</div>
+      <div class="log-box" id="log-box"></div>
+    </div>
+  </div>
+
+  <!-- Done banner -->
+  <div class="done-banner" id="done-banner">
+    <div class="done-banner-icon">🎉</div>
+    <div class="done-banner-text">
+      <h3>All done! File saved with language results.</h3>
+      <p id="done-text">Language names are now in Column B of your file.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = "http://127.0.0.1:7845";
+let uploadedPath = "";
+let pollTimer = null;
+let startTime = null;
+
+const modelHelp = {
+  tiny:   "~39 MB · fastest · use for quick testing only",
+  base:   "~74 MB · good for Hindi & English · recommended",
+  small:  "~244 MB · better accuracy · ~2× slower than base",
+  medium: "~769 MB · highest accuracy · ~5× slower than base",
+};
+
+// ── server check ────────────────────────────────────────────────────────────
+async function checkServer() {
+  try {
+    const r = await fetch(`${API}/status`, { signal: AbortSignal.timeout(2000) });
+    if (r.ok) {
+      document.getElementById("server-warning").classList.remove("show");
+      return true;
+    }
+  } catch {}
+  document.getElementById("server-warning").classList.add("show");
+  setTimeout(checkServer, 3000);
+  return false;
+}
+
+// ── file upload ──────────────────────────────────────────────────────────────
+document.getElementById("file-input").addEventListener("change", async function() {
+  if (!this.files[0]) return;
+  await uploadFile(this.files[0]);
+});
+
+const dz = document.getElementById("dropzone");
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+dz.addEventListener("drop", async e => {
+  e.preventDefault(); dz.classList.remove("drag");
+  if (e.dataTransfer.files[0]) await uploadFile(e.dataTransfer.files[0]);
+});
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+
+  try {
+    const r = await fetch(`${API}/upload`, { method: "POST", body: fd });
+    const data = await r.json();
+    if (data.ok) {
+      uploadedPath = data.filepath;
+      document.getElementById("file-name").textContent = data.filename;
+      document.getElementById("file-path").textContent = "Saved to: " + data.filepath;
+      document.getElementById("file-chosen").classList.add("show");
+      document.getElementById("start-btn").disabled = false;
+    } else {
+      alert("Upload error: " + (data.error || "Unknown"));
+    }
+  } catch (e) {
+    alert("Could not upload file. Is the server running?\n\nRun: python server.py");
+  }
+}
+
+// ── model help text ──────────────────────────────────────────────────────────
+document.getElementById("model-select").addEventListener("change", function() {
+  document.getElementById("model-help").textContent = modelHelp[this.value] || "";
+});
+
+// ── start ────────────────────────────────────────────────────────────────────
+async function startProcessing() {
+  if (!uploadedPath) { alert("Please upload a file first."); return; }
+
+  const model = document.getElementById("model-select").value;
+  const resume = document.getElementById("resume-toggle").checked;
+
+  startTime = Date.now();
+  document.getElementById("progress-section").classList.add("show");
+  document.getElementById("start-btn").style.display = "none";
+  document.getElementById("stop-btn").style.display = "";
+  document.getElementById("done-banner").classList.remove("show");
+  document.getElementById("download-btn").style.display = "none";
+  setStatus("running");
+
+  try {
+    await fetch(`${API}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filepath: uploadedPath, model, resume }),
+    });
+  } catch (e) {
+    alert("Server error. Is server.py running?");
+    return;
+  }
+
+  pollTimer = setInterval(poll, 1200);
+}
+
+// ── stop ─────────────────────────────────────────────────────────────────────
+async function stopProcessing() {
+  clearInterval(pollTimer);
+  await fetch(`${API}/stop`, { method: "POST" }).catch(() => {});
+  setStatus("idle");
+  document.getElementById("start-btn").style.display = "";
+  document.getElementById("start-btn").disabled = false;
+  document.getElementById("stop-btn").style.display = "none";
+}
+
+// ── poll ─────────────────────────────────────────────────────────────────────
+async function poll() {
+  try {
+    const r = await fetch(`${API}/status`);
+    const d = await r.json();
+    updateUI(d);
+    if (d.status === "done" || d.status === "error") {
+      clearInterval(pollTimer);
+      document.getElementById("stop-btn").style.display = "none";
+      document.getElementById("start-btn").style.display = "";
+      document.getElementById("start-btn").disabled = false;
+      if (d.status === "done") {
+        setStatus("done");
+        document.getElementById("download-btn").style.display = "";
+        const banner = document.getElementById("done-banner");
+        banner.classList.add("show");
+        document.getElementById("done-text").textContent =
+          `${d.done.toLocaleString()} recordings processed. Language names are now in Column B of your file.`;
+      } else {
+        setStatus("error");
+      }
+    }
+  } catch {}
+}
+
+function updateUI(d) {
+  document.getElementById("stat-done").textContent = (d.done||0).toLocaleString();
+  document.getElementById("stat-total").textContent = (d.total||0).toLocaleString();
+  document.getElementById("stat-errors").textContent = (d.errors||0).toLocaleString();
+
+  const eta = d.eta_min;
+  document.getElementById("stat-eta").textContent = eta > 60
+    ? `${(eta/60).toFixed(1)}h`
+    : eta > 0 ? `${Math.round(eta)}m` : "—";
+
+  const pct = d.pct || 0;
+  const bar = document.getElementById("prog-bar");
+  bar.style.width = pct + "%";
+  bar.className = "progress-bar" + (d.status === "done" ? " done" : "");
+  document.getElementById("pct-text").textContent = pct.toFixed(1) + "%";
+  document.getElementById("rate-text").textContent =
+    d.rate_per_min > 0 ? `${d.rate_per_min.toFixed(0)} recordings/min · ${d.elapsed_min.toFixed(1)} min elapsed` : "";
+
+  if (d.current_lang || d.current_url) {
+    document.getElementById("current-row").style.display = "flex";
+    document.getElementById("current-lang").textContent = d.current_lang || "detecting...";
+    document.getElementById("current-url").textContent = d.current_url || "";
+  }
+
+  // Lang breakdown
+  const counts = d.lang_counts || {};
+  const total = Object.values(counts).reduce((a,b) => a+b, 0);
+  const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 12);
+  const maxVal = sorted.length ? sorted[0][1] : 1;
+  const colors = ["#2563EB","#16A34A","#D97706","#9333EA","#DC2626","#0891B2","#EA580C","#65A30D","#DB2777","#7C3AED","#0369A1","#047857"];
+
+  if (sorted.length) {
+    document.getElementById("lang-list").innerHTML = sorted.map(([lang, count], i) => `
+      <div class="lang-row">
+        <div class="lang-name-col">${lang}</div>
+        <div class="lang-bar-bg">
+          <div class="lang-bar-fill" style="width:${(count/maxVal*100).toFixed(1)}%; background:${colors[i%colors.length]}"></div>
+        </div>
+        <div class="lang-count">${count.toLocaleString()} (${total ? (count/total*100).toFixed(1) : 0}%)</div>
+      </div>
+    `).join("");
+  }
+
+  // Log
+  const logBox = document.getElementById("log-box");
+  const logs = d.log || [];
+  logBox.innerHTML = logs.map(l => {
+    let cls = "";
+    if (l.includes("✅")) cls = "ok";
+    else if (l.includes("❌") || l.includes("FAILED")) cls = "err";
+    else if (l.includes("💾") || l.includes("Auto-saved")) cls = "save";
+    else if (l.includes("🤖") || l.includes("🏁") || l.includes("📂") || l.includes("🔄")) cls = "info";
+    return `<div class="${cls}">${escHtml(l)}</div>`;
+  }).join("");
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function setStatus(s) {
+  const pill = document.getElementById("status-pill");
+  const states = {
+    idle:    ["pill-idle",    "⬤", "Idle"],
+    running: ["pill-running", "⬤", "Running"],
+    done:    ["pill-done",    "⬤", "Done"],
+    error:   ["pill-error",   "⬤", "Error"],
+  };
+  const [cls, icon, label] = states[s] || states.idle;
+  pill.className = "pill " + cls;
+  pill.innerHTML = `<span class="dot${s==="running"?" pulse":""}"></span> ${label}`;
+}
+
+function downloadFile() {
+  if (!uploadedPath) return;
+  alert(`Your file has been saved with results at:\n\n${uploadedPath}\n\nGo to that location on your computer to open it.`);
+}
+
+// ── init ─────────────────────────────────────────────────────────────────────
+checkServer();
+</script>
+</body>
+</html>
